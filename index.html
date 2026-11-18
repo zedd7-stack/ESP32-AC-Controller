@@ -1,0 +1,276 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart AC Controller</title>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 20px;
+  font-family: Arial, sans-serif;
+  background: #eaf3ff;
+  color: #173b62;
+}
+
+.container {
+  max-width: 430px;
+  margin: auto;
+  background: white;
+  padding: 25px;
+  border-radius: 22px;
+  box-shadow: 0 5px 25px #b8cce0;
+}
+
+h1, h2, p { text-align: center; }
+
+.temp {
+  font-size: 55px;
+  font-weight: bold;
+  text-align: center;
+  margin: 15px;
+}
+
+button, select, input {
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid #ccd9e8;
+  font-size: 15px;
+}
+
+button {
+  cursor: pointer;
+  background: #168bdb;
+  color: white;
+  border: none;
+}
+
+.power {
+  display: block;
+  width: 100%;
+  padding: 16px;
+  font-size: 18px;
+  background: #168bdb;
+}
+
+.controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 15px;
+}
+
+.section {
+  margin-top: 25px;
+  border-top: 1px solid #ddd;
+  padding-top: 15px;
+}
+
+select, input {
+  width: 100%;
+  margin: 8px 0;
+  background: white;
+}
+
+.full {
+  width: 100%;
+}
+
+.status {
+  text-align: center;
+  color: #168bdb;
+  font-weight: bold;
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<h1>❄ Smart AC Controller</h1>
+<p>ESP32 Wi-Fi Remote</p>
+
+<h2 id="status">AC OFF</h2>
+<button class="power" onclick="togglePower()">
+POWER ON / OFF
+</button>
+
+<div class="section">
+<h3>Temperature</h3>
+<div class="temp">
+<span id="temperature">24</span>°C
+</div>
+<div class="controls">
+<button onclick="changeTemp(-1)">−</button>
+<button onclick="changeTemp(1)">+</button>
+</div>
+</div>
+
+<div class="section">
+<h3>Fan Speed</h3>
+<select id="fan">
+<option>Auto</option>
+<option>Low</option>
+<option>Medium</option>
+<option>High</option>
+</select>
+
+<h3>AC Mode</h3>
+<select id="mode">
+<option>Cool</option>
+<option>Dry</option>
+<option>Fan</option>
+<option>Auto</option>
+</select>
+</div>
+
+<div class="section">
+<h3>Timer ON</h3>
+<input type="time" id="onTime">
+<button class="full" onclick="setTimer('on')">
+Set ON Timer
+</button>
+
+<h3>Timer OFF</h3>
+<input type="time" id="offTime">
+<button class="full" onclick="setTimer('off')">
+Set OFF Timer
+</button>
+
+<p id="timerStatus">No timers set</p>
+</div>
+
+<div class="section">
+<h3>Daily Schedule</h3>
+<label>Daily ON time</label>
+<input type="time" id="dailyOn">
+
+<label>Daily OFF time</label>
+<input type="time" id="dailyOff">
+
+<button class="full" onclick="saveSchedule()">
+Save Daily Schedule
+</button>
+<p id="scheduleStatus">No daily schedule</p>
+</div>
+
+<div class="section">
+<h3>Connection</h3>
+<p class="status" id="connection">
+ESP32: Not connected
+</p>
+</div>
+
+</div>
+
+<script>
+let isOn = false;
+let temperature = 24;
+let onTimer = null;
+let offTimer = null;
+let dailyInterval = null;
+let dailySchedule = null;
+let lastOnDate = "";
+let lastOffDate = "";
+
+function togglePower() {
+  isOn = !isOn;
+  updateStatus();
+}
+
+function updateStatus() {
+  document.getElementById("status").innerText =
+    isOn ? "AC ON" : "AC OFF";
+}
+
+function changeTemp(amount) {
+  temperature = Math.max(16, Math.min(30,
+    temperature + amount));
+  document.getElementById("temperature").innerText =
+    temperature;
+}
+
+function setTimer(type) {
+  const value = document.getElementById(
+    type === "on" ? "onTime" : "offTime"
+  ).value;
+
+  if (!value) {
+    alert("Please select a time");
+    return;
+  }
+
+  const [hours, minutes] = value.split(":").map(Number);
+  const target = new Date();
+  target.setHours(hours, minutes, 0, 0);
+
+  if (target <= new Date()) {
+    target.setDate(target.getDate() + 1);
+  }
+
+  const delay = target.getTime() - Date.now();
+
+  if (type === "on") {
+    clearTimeout(onTimer);
+    onTimer = setTimeout(() => {
+      isOn = true;
+      updateStatus();
+    }, delay);
+  } else {
+    clearTimeout(offTimer);
+    offTimer = setTimeout(() => {
+      isOn = false;
+      updateStatus();
+    }, delay);
+  }
+
+  document.getElementById("timerStatus").innerText =
+    "Timer " + type.toUpperCase() + " set for " + value;
+}
+
+function saveSchedule() {
+  const on = document.getElementById("dailyOn").value;
+  const off = document.getElementById("dailyOff").value;
+
+  if (!on || !off) {
+    alert("Select both ON and OFF times");
+    return;
+  }
+
+  dailySchedule = {on, off};
+  lastOnDate = "";
+  lastOffDate = "";
+
+  document.getElementById("scheduleStatus").innerText =
+    "Daily schedule saved: ON " + on + ", OFF " + off;
+}
+
+dailyInterval = setInterval(() => {
+  if (!dailySchedule) return;
+
+  const now = new Date();
+  const current =
+    String(now.getHours()).padStart(2, "0") + ":" +
+    String(now.getMinutes()).padStart(2, "0");
+
+  const today = now.toDateString();
+
+  if (current === dailySchedule.on && lastOnDate !== today) {
+    isOn = true;
+    updateStatus();
+    lastOnDate = today;
+  }
+
+  if (current === dailySchedule.off && lastOffDate !== today) {
+    isOn = false;
+    updateStatus();
+    lastOffDate = today;
+  }
+}, 1000);
+</script>
+</body>
+</html>
